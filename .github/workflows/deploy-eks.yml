@@ -1,94 +1,90 @@
-name: Deploy EV3 to EKS
+﻿name: Deploy EV3 to EKS
 
 on:
-push:
-branches: [ "main" ]
+  push:
+    branches: [ "main" ]
 
 jobs:
-deploy:
-runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  - name: Configure AWS credentials
-    uses: aws-actions/configure-aws-credentials@v4
-    with:
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-      aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-  - name: Setup kubectl
-    uses: azure/setup-kubectl@v4
-    with:
-      version: 'latest'
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'latest'
 
-  - name: Login to Amazon ECR
-    id: login-ecr
-    uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-  - name: Build and push frontend image
-    run: |
-      REGISTRY=${{ steps.login-ecr.outputs.registry }}
-      docker build -t $REGISTRY/${{ secrets.ECR_FRONTEND }}:${{ github.sha }} ./front_despacho
-      docker push $REGISTRY/${{ secrets.ECR_FRONTEND }}:${{ github.sha }}
+      - name: Build and push frontend image
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          docker build -t $REGISTRY/${{ secrets.ECR_FRONTEND }}:${{ github.sha }} ./front_despacho
+          docker push $REGISTRY/${{ secrets.ECR_FRONTEND }}:${{ github.sha }}
 
-  - name: Build and push ventas image
-    run: |
-      REGISTRY=${{ steps.login-ecr.outputs.registry }}
-      docker build -t $REGISTRY/${{ secrets.ECR_BACKEND_VENTAS }}:${{ github.sha }} ./back-Ventas_SpringBoot/Springboot-API-REST
-      docker push $REGISTRY/${{ secrets.ECR_BACKEND_VENTAS }}:${{ github.sha }}
+      - name: Build and push ventas image
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          docker build -t $REGISTRY/${{ secrets.ECR_BACKEND_VENTAS }}:${{ github.sha }} ./back-Ventas_SpringBoot/Springboot-API-REST
+          docker push $REGISTRY/${{ secrets.ECR_BACKEND_VENTAS }}:${{ github.sha }}
 
-  - name: Build and push despachos image
-    run: |
-      REGISTRY=${{ steps.login-ecr.outputs.registry }}
-      docker build -t $REGISTRY/${{ secrets.ECR_BACKEND_DESPACHOS }}:${{ github.sha }} ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-      docker push $REGISTRY/${{ secrets.ECR_BACKEND_DESPACHOS }}:${{ github.sha }}
+      - name: Build and push despachos image
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          docker build -t $REGISTRY/${{ secrets.ECR_BACKEND_DESPACHOS }}:${{ github.sha }} ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+          docker push $REGISTRY/${{ secrets.ECR_BACKEND_DESPACHOS }}:${{ github.sha }}
 
-  - name: Update kubeconfig
-    run: |
-      aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
 
-  - name: Apply storage and database manifests
-    run: |
-      kubectl apply -f k8s/storageclass-local.yaml
-      kubectl apply -f k8s/mysql-local-pv.yaml
-      kubectl apply -f k8s/mysql.yaml
-      kubectl rollout status statefulset/mysql --timeout=300s
+      - name: Apply storage and database manifests
+        run: |
+          kubectl apply -f k8s/storageclass-local.yaml
+          kubectl apply -f k8s/mysql-local-pv.yaml
+          kubectl apply -f k8s/mysql.yaml
+          kubectl rollout status statefulset/mysql --timeout=300s
 
-  - name: Apply application manifests
-    run: |
-      kubectl apply -f k8s/frontend-deployment.yaml
-      kubectl apply -f k8s/ventas-deployment.yaml
-      kubectl apply -f k8s/despachos-deployment.yaml
-      kubectl apply -f k8s/hpa.yaml
+      - name: Apply application manifests
+        run: |
+          kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/ventas-deployment.yaml
+          kubectl apply -f k8s/despachos-deployment.yaml
+          kubectl apply -f k8s/hpa.yaml
 
-  - name: Update deployment images
-    run: |
-      REGISTRY=${{ steps.login-ecr.outputs.registry }}
+      - name: Update deployment images
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          kubectl set image deployment/frontend frontend=$REGISTRY/${{ secrets.ECR_FRONTEND }}:${{ github.sha }}
+          kubectl set image deployment/ventas-api ventas-api=$REGISTRY/${{ secrets.ECR_BACKEND_VENTAS }}:${{ github.sha }}
+          kubectl set image deployment/despachos-api despachos-api=$REGISTRY/${{ secrets.ECR_BACKEND_DESPACHOS }}:${{ github.sha }}
 
-      kubectl set image deployment/frontend frontend=$REGISTRY/${{ secrets.ECR_FRONTEND }}:${{ github.sha }}
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/frontend --timeout=300s
+          kubectl rollout status deployment/ventas-api --timeout=300s
+          kubectl rollout status deployment/despachos-api --timeout=300s
 
-      kubectl set image deployment/ventas-api ventas-api=$REGISTRY/${{ secrets.ECR_BACKEND_VENTAS }}:${{ github.sha }}
-
-      kubectl set image deployment/despachos-api despachos-api=$REGISTRY/${{ secrets.ECR_BACKEND_DESPACHOS }}:${{ github.sha }}
-
-  - name: Verify rollout
-    run: |
-      kubectl rollout status deployment/frontend --timeout=300s
-      kubectl rollout status deployment/ventas-api --timeout=300s
-      kubectl rollout status deployment/despachos-api --timeout=300s
-
-  - name: Show cluster resources
-    run: |
-      kubectl get nodes -o wide
-      kubectl get pods -o wide
-      kubectl get svc
-      kubectl get endpoints
-      kubectl get hpa
-      kubectl get statefulset
-      kubectl get pvc
-      kubectl get pv
-
+      - name: Show cluster resources
+        run: |
+          kubectl get nodes -o wide
+          kubectl get pods -o wide
+          kubectl get svc
+          kubectl get endpoints
+          kubectl get hpa
+          kubectl get statefulset
+          kubectl get pvc
+          kubectl get pv
