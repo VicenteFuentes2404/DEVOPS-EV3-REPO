@@ -8,7 +8,6 @@ jobs:
 deploy:
 runs-on: ubuntu-latest
 
-```
 steps:
   - name: Checkout repository
     uses: actions/checkout@v4
@@ -70,14 +69,11 @@ steps:
     run: |
       REGISTRY=${{ steps.login-ecr.outputs.registry }}
 
-      kubectl set image deployment/frontend \
-        frontend=$REGISTRY/${{ secrets.ECR_FRONTEND }}:${{ github.sha }}
+      kubectl set image deployment/frontend frontend=$REGISTRY/${{ secrets.ECR_FRONTEND }}:${{ github.sha }}
 
-      kubectl set image deployment/ventas-api \
-        ventas-api=$REGISTRY/${{ secrets.ECR_BACKEND_VENTAS }}:${{ github.sha }}
+      kubectl set image deployment/ventas-api ventas-api=$REGISTRY/${{ secrets.ECR_BACKEND_VENTAS }}:${{ github.sha }}
 
-      kubectl set image deployment/despachos-api \
-        despachos-api=$REGISTRY/${{ secrets.ECR_BACKEND_DESPACHOS }}:${{ github.sha }}
+      kubectl set image deployment/despachos-api despachos-api=$REGISTRY/${{ secrets.ECR_BACKEND_DESPACHOS }}:${{ github.sha }}
 
   - name: Verify rollout
     run: |
@@ -95,4 +91,4 @@ steps:
       kubectl get statefulset
       kubectl get pvc
       kubectl get pv
-```
+
